@@ -1,0 +1,9 @@
+/usr/aarch64-linux-gnu
+Using built-in specs.
+COLLECT_GCC=aarch64-linux-gnu-gcc
+COLLECT_LTO_WRAPPER=/usr/lib/gcc/aarch64-linux-gnu/16.1.0/lto-wrapper
+Target: aarch64-linux-gnu
+Configured with: /startdir/src/gcc-16.1.0/configure --prefix=/usr --program-prefix=aarch64-linux-gnu- --with-local-prefix=/usr/aarch64-linux-gnu --with-sysroot=/usr/aarch64-linux-gnu --with-build-sysroot=/usr/aarch64-linux-gnu --with-native-system-header-dir=/include --libdir=/usr/lib --libexecdir=/usr/lib --target=aarch64-linux-gnu --host=x86_64-pc-linux-gnu --build=x86_64-pc-linux-gnu --disable-nls --enable-default-pie --enable-languages=c,c++,fortran --enable-shared --enable-threads=posix --with-system-zlib --with-isl --enable-__cxa_atexit --disable-libunwind-exceptions --enable-clocale=gnu --disable-libstdcxx-pch --disable-libssp --enable-gnu-unique-object --enable-linker-build-id --enable-lto --enable-plugin --enable-install-libiberty --with-linker-hash-style=gnu --enable-gnu-indirect-function --disable-multilib --disable-werror --enable-checking=release
+Thread model: posix
+Supported LTO compression algorithms: zlib zstd
+gcc version 16.1.0 (GCC) 
