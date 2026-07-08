@@ -1,5 +1,16 @@
 #include "systemcalls.h"
 
+//#include "stdio.h"
+//#include "stdlib.h"
+//#include "unistd.h"
+//#include "string.h"
+
+#include <stdio.h>
+#include <fcntl.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+
 /**
  * @param cmd the command to execute with system()
  * @return true if the command in @param cmd was executed
@@ -16,6 +27,11 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    int ret = system(cmd);
+    if (ret != 0)
+    {
+        return false;
+    }
 
     return true;
 }
@@ -59,8 +75,37 @@ bool do_exec(int count, ...)
  *
 */
 
-    va_end(args);
+    pid_t id = fork();
+    
+    if (id < 0)
+    {
+        // error creating fork
+        return false;
+    }
+    else if (id == 0)
+    {
+        int stat = execv(command[0], command);
 
+        // catch error in execv
+        if (stat < 0)
+        {
+            exit(1);
+        }
+    }
+    else
+    {
+        // parent process
+        int status;
+
+        wait(&status);
+        if (status != 0)
+        {
+            // unsuccessful return of child
+            return false;
+        }
+    }
+
+    va_end(args);
     return true;
 }
 
@@ -92,6 +137,52 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *   The rest of the behaviour is same as do_exec()
  *
 */
+
+    int fptr = open(outputfile, O_WRONLY|O_TRUNC|O_CREAT, 0644);
+    if (fptr < 0)
+    {
+        return false;
+    }
+
+    pid_t id = fork();
+    
+    if (id < 0)
+    {
+        // error creating fork
+        return false;
+    }
+    else if (id == 0)
+    {
+        // child process
+        int ret = dup2(fptr, 1);
+        if (ret < 0)
+        {
+            return false;
+        }
+        close(fptr);
+
+        int stat = execv(command[0], command);
+
+        // catch error in execv
+        if (stat < 0)
+        {
+            exit(1);
+        }
+    }
+    else
+    {
+        // parent process
+        close(fptr);
+
+        int status;
+
+        wait(&status);
+        if (status != 0)
+        {
+            // unsuccessful return of child
+            return false;
+        }
+    }
 
     va_end(args);
 
