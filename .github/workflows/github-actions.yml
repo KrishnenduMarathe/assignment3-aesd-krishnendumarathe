@@ -6,6 +6,15 @@ on:
         branches:
             - '*'
 jobs:
+  full-test:
+    container: cuaesd/aesd-autotest:assignment3
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v2
+      - name: Checkout submodules
+        run : git submodule update --init --recursive
+      - name: Run full test
+        run: ./full-test.sh
   unit-test:
     container: cuaesd/aesd-autotest:assignment3
     runs-on: self-hosted
