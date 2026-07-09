@@ -25,6 +25,7 @@ fi
 PATH=$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/arm-cross-compiler/install/gcc-arm-10.2-2020.11-x86_64-aarch64-none-linux-gnu/bin
 
 mkdir -p ${OUTDIR}
+CURR_PATH=$(pwd)
 
 cd "$OUTDIR"
 if [ ! -d "${OUTDIR}/linux-stable" ]; then
@@ -96,7 +97,7 @@ sudo mknod -m 666 dev/console c 5 1
 
 # TODO: Clean and build the writer utility
 echo "Compiling writer utility using make make CROSS_COMPILE=$CROSS_COMPILE"
-cd /project/finder-app
+cd $CURR_PATH/finder-app
 if [ -f writer.o || -f writer ]; then
     make clean
 fi
