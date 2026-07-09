@@ -97,7 +97,8 @@ sudo mknod -m 666 dev/console c 5 1
 
 # TODO: Clean and build the writer utility
 echo "Compiling writer utility using make make CROSS_COMPILE=$CROSS_COMPILE"
-cd $CURR_PATH/finder-app
+cd $CURR_PATH
+
 if [ -f writer.o || -f writer ]; then
     make clean
 fi
