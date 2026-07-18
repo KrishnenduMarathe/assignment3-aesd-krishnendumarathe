@@ -73,7 +73,8 @@ int main()
         }
     }
 
-    int sfd;
+    int fd = -1; 
+    int sfd = -1;
     struct addrinfo* itr;
     for (itr = result; itr != NULL; itr = itr->ai_next)
     {
@@ -86,6 +87,7 @@ int main()
 
         // bind failed, close socket
         close(sfd);
+        sfd = -1;
     }
 
     // free allocated addrinfo result
@@ -94,49 +96,27 @@ int main()
     // no address found
     if (itr == NULL)
     {
-        if (grace_exit)
-        {
-            closelog();
-            return 0;
-        } else {
-            syslog(LOG_ERR, "No address found to bind socker to. Last error: %s", strerror(errno));
-            closelog();
-            return -1;
-        }
+        if (!grace_exit) syslog(LOG_ERR, "No address found to bind socker to. Last error: %s", strerror(errno));
+
+        goto cleanup;
     }
 
     // on successful bind, start listening
     ret = listen(sfd, N_BACKLOG);
     if (ret < 0)
     {
-        if (grace_exit)
-        {
-            closelog();
-            close(sfd);
-            return 0;
-        } else {
-            syslog(LOG_ERR, "Failed to listen on the socket with error: %s", strerror(errno));
-            closelog();
-            close(sfd);
-            return -1;
-        }
+        if (!grace_exit) syslog(LOG_ERR, "Failed to listen on the socket with error: %s", strerror(errno));
+
+        goto cleanup;
     }
 
     // initiate data file
-    int fd = open("/var/tmp/aesdsocketdata", O_RDWR | O_CREAT | O_APPEND, 0644);
+    fd = open("/var/tmp/aesdsocketdata", O_RDWR | O_CREAT | O_APPEND, 0644);
     if (fd < 0)
     {
-        if (grace_exit)
-        {
-            closelog();
-            close(sfd);
-            return 0;
-        } else {
-            syslog(LOG_ERR, "Failed to create/open /var/tmp/aesdsocketdata with error: %s", strerror(errno));
-            closelog();
-            close(sfd);
-            return -1;
-        }
+        if (!grace_exit) syslog(LOG_ERR, "Failed to create/open /var/tmp/aesdsocketdata with error: %s", strerror(errno));
+
+        goto cleanup;
     }
 
     while (grace_exit == 0)
@@ -147,39 +127,19 @@ int main()
         int cfd = accept(sfd, (struct sockaddr *) &caddr, (socklen_t *) &caddr_len);
         if (cfd < 0)
         {
-            if (grace_exit)
-            {
-                closelog();
-                close(sfd);
-                close(fd);
-                return 0;
-            } else {
-                syslog(LOG_ERR, "Failed to accept connection with error: %s", strerror(errno));
-                closelog();
-                close(sfd);
-                close(fd);
-                return -1;
-            }
+            if (!grace_exit) syslog(LOG_ERR, "Failed to accept connection with error: %s", strerror(errno));
+
+            goto cleanup;
         }
 
         char cip[50];
         if (inet_ntop(AF_INET6, &caddr.sin6_addr, cip, 50) == NULL)
         {
-            if (grace_exit)
-            {
-                closelog();
-                close(cfd);
-                close(sfd);
-                close(fd);
-                return 0;
-            } else {
-                syslog(LOG_ERR, "Failed to get client address with error: %s", strerror(errno));
-                closelog();
-                close(cfd);
-                close(sfd);
-                close(fd);
-                return -1;
-            }
+            close(cfd);
+
+            if (!grace_exit) syslog(LOG_ERR, "Failed to get client address with error: %s", strerror(errno));
+
+            goto cleanup;
         }
 
         syslog(LOG_DEBUG, "Accepted connection from %s", cip);
@@ -195,7 +155,7 @@ int main()
         while (grace_exit == 0)
         {
             // get data from client
-            size_t readsize = 0;
+            long int readsize = 0;
             memset(buf, 0, buffsize * sizeof(char));
 
             readsize = read(cfd, buf, buffsize * sizeof(char));
@@ -209,46 +169,22 @@ int main()
             }
             if (readsize < 0)
             {
-                if (grace_exit)
-                {
-                    if (dynbuffer != NULL) free(dynbuffer);
-                    closelog();
-                    close(cfd);
-                    close(sfd);
-                    close(fd);
-                    return 0;
-                } else {
-                    syslog(LOG_ERR, "Failed to get data from client with error: %s", strerror(errno));
-                    if (dynbuffer != NULL) free(dynbuffer);
-                    closelog();
-                    close(cfd);
-                    close(sfd);
-                    close(fd);
-                    return -1;
-                }
+                if (!grace_exit) syslog(LOG_ERR, "Failed to get data from client with error: %s", strerror(errno));
+                if (dynbuffer != NULL) free(dynbuffer);
+                close(cfd);
+                
+                goto cleanup;
             }
 
             // stream data till \n
             char *ptr = (char *) realloc(dynbuffer, dynbuffersize + readsize + 1);
             if (ptr == NULL)
             {
-                if (grace_exit)
-                {
-                    if (dynbuffer != NULL) free(dynbuffer);
-                    closelog();
-                    close(cfd);
-                    close(sfd);
-                    close(fd);
-                    return 0;
-                } else {
-                    syslog(LOG_ERR, "Failed to reallocate dynamic buffer with error: %s", strerror(errno));
-                    if (dynbuffer != NULL) free(dynbuffer);
-                    closelog();
-                    close(cfd);
-                    close(sfd);
-                    close(fd);
-                    return -1;
-                }
+                if (!grace_exit) syslog(LOG_ERR, "Failed to reallocate dynamic buffer with error: %s", strerror(errno));
+                if (dynbuffer != NULL) free(dynbuffer);
+                close(cfd);
+
+                goto cleanup;
             }
             dynbuffer = ptr;
 
@@ -258,118 +194,26 @@ int main()
             dynbuffer[dynbuffersize] = '\0';
 
             // check for newline character
-            char* retptr = strchr(dynbuffer, '\n');
-            if (retptr != NULL)
+            char* retptr;
+            int newlinefound = 0;
+
+            while (dynbuffer != NULL && (retptr = strchr(dynbuffer, '\n')) != NULL)
             {
                 // new line found
+                if (!newlinefound) newlinefound = 1;
+
                 unsigned int length = (retptr - dynbuffer) + 1;
 
                 // write to file
                 ret = write(fd, dynbuffer, length * sizeof(char));
                 if (ret < 0)
                 {
-                    if (grace_exit)
-                    {
-                        free(dynbuffer);
-                        closelog();
-                        close(cfd);
-                        close(sfd);
-                        close(fd);
-                        return 0;
-                    } else {
-                        syslog(LOG_ERR, "Failed to write to /var/tmp/aesdsocketdata with error: %s", strerror(errno));
-                        free(dynbuffer);
-                        closelog();
-                        close(cfd);
-                        close(sfd);
-                        close(fd);
-                        return -1;
-                    }
+                    if (!grace_exit) syslog(LOG_ERR, "Failed to write to /var/tmp/aesdsocketdata with error: %s", strerror(errno));
+                    if (dynbuffer != NULL) free(dynbuffer);
+                    close(cfd);
+                    
+                    goto cleanup;
                 }
-
-                // seek back on the file to the beginning
-                lseek(fd, 0, SEEK_SET);
-
-                unsigned int fsize = lseek(fd, 0, SEEK_END);
-
-                char* data = (char*) malloc((fsize+1) * sizeof(char));
-                if (data == NULL)
-                {
-                    if (grace_exit)
-                    {
-                        free(dynbuffer);
-                        closelog();
-                        close(cfd);
-                        close(sfd);
-                        close(fd);
-                        return 0;
-                    } else {
-                        syslog(LOG_ERR, "Failed to allocate for data with error: %s", strerror(errno));
-                        free(dynbuffer);
-                        closelog();
-                        close(cfd);
-                        close(sfd);
-                        close(fd);
-                        return -1;
-                    }
-                }
-
-                // send data to client
-                lseek(fd, 0, SEEK_SET);
-
-                ret = read(fd, data, fsize * sizeof(char));
-                if (ret < 0)
-                {
-                    if (grace_exit)
-                    {
-                        free(dynbuffer);
-                        free(data);
-                        closelog();
-                        close(cfd);
-                        close(sfd);
-                        close(fd);
-                        return 0;
-                    } else {
-                        syslog(LOG_ERR, "Failed to read from /var/tmp/aesdsocketdata with error: %s", strerror(errno));
-                        free(dynbuffer);
-                        free(data);
-                        closelog();
-                        close(cfd);
-                        close(sfd);
-                        close(fd);
-                        return -1;
-                    }
-                }
-                data[fsize] = '\0';
-
-                // restore file seek
-                lseek(fd, 0, SEEK_END);
-
-                ret = write(cfd, data, fsize * sizeof(char));
-                if (ret < 0)
-                {
-                    if (grace_exit)
-                    {
-                        free(dynbuffer);
-                        free(data);
-                        closelog();
-                        close(cfd);
-                        close(sfd);
-                        close(fd);
-                        return 0;
-                    } else {
-                        syslog(LOG_ERR, "Failed to send data to client with error: %s", strerror(errno));
-                        free(dynbuffer);
-                        free(data);
-                        closelog();
-                        close(cfd);
-                        close(sfd);
-                        close(fd);
-                        return -1;
-                    }
-                }
-
-                free(data);
 
                 // move remaining data to front of buffer
                 unsigned int rem_length = dynbuffersize - length;
@@ -381,20 +225,78 @@ int main()
                     dynbuffersize = rem_length;
                     dynbuffer[dynbuffersize] = '\0';
                 } else {
-                    free(dynbuffer);
+                    if (dynbuffer != NULL) free(dynbuffer);
                     dynbuffer = NULL;
                     dynbuffersize = 0;
                 }
 
             }
+
+            if (newlinefound)
+            {
+                newlinefound = 0;
+                // seek back on the file to the beginning
+                lseek(fd, 0, SEEK_SET);
+
+                unsigned int fsize = lseek(fd, 0, SEEK_END);
+
+                char* data = (char*) malloc((fsize+1) * sizeof(char));
+                if (data == NULL)
+                {
+                    if (!grace_exit) syslog(LOG_ERR, "Failed to allocate for data with error: %s", strerror(errno));
+                    if (dynbuffer != NULL) free(dynbuffer);
+                    close(cfd);
+                    
+                    goto cleanup;
+                }
+
+                // send data to client
+                lseek(fd, 0, SEEK_SET);
+
+                ret = read(fd, data, fsize * sizeof(char));
+                if (ret < 0)
+                {
+                    if (!grace_exit) syslog(LOG_ERR, "Failed to read from /var/tmp/aesdsocketdata with error: %s", strerror(errno));
+                    if (dynbuffer != NULL) free(dynbuffer);
+                    if (data != NULL) free(data);
+                    close(cfd);
+                    
+                    goto cleanup;
+                }
+                data[fsize] = '\0';
+
+                // restore file seek
+                lseek(fd, 0, SEEK_END);
+
+                ret = write(cfd, data, fsize * sizeof(char));
+                if (ret < 0)
+                {
+                    if (!grace_exit) syslog(LOG_ERR, "Failed to send data to client with error: %s", strerror(errno));
+                    if (dynbuffer != NULL) free(dynbuffer);
+                    if (data != NULL) free(data);
+                    close(cfd);
+                    
+                    goto cleanup;
+                }
+
+                if (data != NULL) free(data);
+            }
         }
 
-        if (dynbuffer != NULL) free(dynbuffer);
+        if (dynbuffer != NULL)
+        {
+            free(dynbuffer);
+            dynbuffer = NULL;
+            dynbuffersize = 0;
+        }
+        close(cfd);
     }
 
+cleanup:
+
     // gracefully exit
-    close(sfd);
-    close(fd);
+    if (sfd != -1) close(sfd);
+    if (fd != -1) close(fd);
 
     // delete data file
     ret = unlink("/var/tmp/aesdsocketdata");
@@ -405,8 +307,15 @@ int main()
         return -1;
     }
 
-    syslog(LOG_DEBUG, "Caught signal, exiting");
-    closelog();
+    if (grace_exit)
+    {
+        syslog(LOG_DEBUG, "Caught signal, exiting");
+        closelog();
+        return 0;
+    } else {
+        closelog();
+        return -1;
+    }
 
     return 0;
 }
