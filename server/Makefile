@@ -3,13 +3,14 @@ CFLAGS=-g -Wall -Werror
 
 SOURCES=aesdsocket.c
 OBJECTS=aesdsocket.o
+EXEC=aesdsocket
 
 all: $(OBJECTS)
-	$(CC) $(CFLAGS) $(OBJECTS) -o aesdsocket
+	$(CC) $(CFLAGS) $(OBJECTS) -o $(EXEC)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c $< -o $@
 
 clean:
-	rm aesdsocket
-	rm *.o
+	if [ -f $(EXEC) ]; then rm $(EXEC); fi
+	if [ -f $(OBJECTS) ]; then rm $(OBJECTS); fi
