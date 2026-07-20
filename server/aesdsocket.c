@@ -180,13 +180,57 @@ int main(int argc, char **argv)
             goto cleanup;
         }
 
-        char cip[50];
-        if (inet_ntop(AF_INET6, &caddr.sin6_addr, cip, 50) == NULL) {
-            close(cfd);
+        char *cip;
+        int cip_len = 0;
 
-            if (!grace_exit) syslog(LOG_ERR, "Failed to get client address with error: %s", strerror(errno));
+        // check if ipv4
+        if (IN6_IS_ADDR_V4MAPPED(&caddr.sin6_addr)) {
+            cip_len = INET_ADDRSTRLEN;
+            cip = (char *) malloc(cip_len * sizeof(char));
+            if (cip == NULL) {
+                close(cfd);
 
-            goto cleanup;
+                if (!grace_exit) syslog(LOG_ERR, "Failed to allocate IPv4 address string in memory with error: %s", strerror(errno));
+
+                goto cleanup;
+            }
+
+            // get ipv4 client address
+            struct in_addr caddrv4;
+
+            // last 4 bytes at 12 byte offset
+            memcpy(&caddrv4.s_addr, &caddr.sin6_addr.s6_addr[12], 4);
+
+            // get ipv4 client address
+            if (inet_ntop(AF_INET, &caddrv4, cip, cip_len * sizeof(char)) == NULL) {
+                if (cip != NULL) free(cip);
+                close(cfd);
+
+                if (!grace_exit) syslog(LOG_ERR, "Failed to get client IPv4 address with error: %s", strerror(errno));
+
+                goto cleanup;
+            }
+        }
+        else {
+            cip_len = INET6_ADDRSTRLEN;
+            cip = (char *) malloc(cip_len * sizeof(char));
+            if (cip == NULL) {
+                close(cfd);
+
+                if (!grace_exit) syslog(LOG_ERR, "Failed to allocate IPv6 address string in memory with error: %s", strerror(errno));
+
+                goto cleanup;
+            }
+
+            // get ipv6 client address
+            if (inet_ntop(AF_INET6, &caddr.sin6_addr, cip, cip_len * sizeof(char)) == NULL) {
+                if (cip != NULL) free(cip);
+                close(cfd);
+
+                if (!grace_exit) syslog(LOG_ERR, "Failed to get client address IPv6 with error: %s", strerror(errno));
+
+                goto cleanup;
+            }
         }
 
         syslog(LOG_DEBUG, "Accepted connection from %s", cip);
@@ -208,12 +252,14 @@ int main(int argc, char **argv)
             if (readsize == 0) {
                 // client finished sending data
                 syslog(LOG_DEBUG, "Closed connection from %s", cip);
+                if (cip != NULL) free(cip);
                 if (dynbuffer != NULL) free(dynbuffer);
                 close(cfd);
                 break;
             }
             if (readsize < 0) {
                 if (!grace_exit) syslog(LOG_ERR, "Failed to get data from client with error: %s", strerror(errno));
+                if (cip != NULL) free(cip);
                 if (dynbuffer != NULL) free(dynbuffer);
                 close(cfd);
                 
@@ -224,6 +270,7 @@ int main(int argc, char **argv)
             char *ptr = (char *) realloc(dynbuffer, dynbuffersize + readsize + 1);
             if (ptr == NULL) {
                 if (!grace_exit) syslog(LOG_ERR, "Failed to reallocate dynamic buffer with error: %s", strerror(errno));
+                if (cip != NULL) free(cip);
                 if (dynbuffer != NULL) free(dynbuffer);
                 close(cfd);
 
@@ -250,6 +297,7 @@ int main(int argc, char **argv)
                 ret = write(fd, dynbuffer, length * sizeof(char));
                 if (ret < 0) {
                     if (!grace_exit) syslog(LOG_ERR, "Failed to write to /var/tmp/aesdsocketdata with error: %s", strerror(errno));
+                    if (cip != NULL) free(cip);
                     if (dynbuffer != NULL) free(dynbuffer);
                     close(cfd);
                     
@@ -283,6 +331,7 @@ int main(int argc, char **argv)
                 char* data = (char*) malloc((fsize+1) * sizeof(char));
                 if (data == NULL) {
                     if (!grace_exit) syslog(LOG_ERR, "Failed to allocate for data with error: %s", strerror(errno));
+                    if (cip != NULL) free(cip);
                     if (dynbuffer != NULL) free(dynbuffer);
                     close(cfd);
                     
@@ -295,6 +344,7 @@ int main(int argc, char **argv)
                 ret = read(fd, data, fsize * sizeof(char));
                 if (ret < 0) {
                     if (!grace_exit) syslog(LOG_ERR, "Failed to read from /var/tmp/aesdsocketdata with error: %s", strerror(errno));
+                    if (cip != NULL) free(cip);
                     if (dynbuffer != NULL) free(dynbuffer);
                     if (data != NULL) free(data);
                     close(cfd);
@@ -309,6 +359,7 @@ int main(int argc, char **argv)
                 ret = write(cfd, data, fsize * sizeof(char));
                 if (ret < 0) {
                     if (!grace_exit) syslog(LOG_ERR, "Failed to send data to client with error: %s", strerror(errno));
+                    if (cip != NULL) free(cip);
                     if (dynbuffer != NULL) free(dynbuffer);
                     if (data != NULL) free(data);
                     close(cfd);
