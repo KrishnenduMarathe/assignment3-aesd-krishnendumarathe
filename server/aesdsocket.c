@@ -56,7 +56,7 @@ int main(int argc, char **argv)
     hints.ai_protocol = 0;
 
 
-    int ret = getaddrinfo("localhost", "9000", &hints, &result);
+    int ret = getaddrinfo(NULL, "9000", &hints, &result);
     if (ret != 0) {
         if (grace_exit) {
             closelog();
